@@ -1,1 +1,1 @@
-# Statistical analyses present in the paper Mancuso et al., XXX 
+# Statistical analyses present of Mancuso Gidaro et al., XXX 
