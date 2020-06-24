@@ -70,6 +70,61 @@ test_single_pairs <- function(tab, field, g1, g2){
   return(res)
 }
 
+
+
+test_single_pairs_Paired <- function(tab, field, g1, g2, alt){
+  
+  # tab= pz_dat
+  # 
+  # field = "Total_CEPmL"
+
+  # remove NA
+  sub_tab.tmp1 <- tab[which(!is.na(tab[,field])),]
+
+  #
+  # g1= "recovered"
+  # g2= "recovered_b"
+
+  # filter the two groups
+  sub_tab.tmp2 <- sub_tab.tmp1[sub_tab.tmp1$gruppo== g1 | sub_tab.tmp1$gruppo== g2,]
+  
+  sub_tab <- rbind(sub_tab.tmp2[match(gsub("_B", "",sub_tab.tmp2$Codifica_IEO[sub_tab.tmp2$gruppo==g2]),
+                                 sub_tab.tmp2$Codifica_IEO[sub_tab.tmp2$gruppo==g1]),],
+                   sub_tab.tmp2[sub_tab.tmp2$gruppo==g2,])
+  
+  
+  
+  # Shapiro_Wilk normality on first group
+  p.sh1 <- with(sub_tab, shapiro.test(get(field)[gruppo== g1]))$p.value 
+  
+  
+  # Shapiro_Wilk normality on second group
+  p.sh2 <- with(sub_tab, shapiro.test(get(field)[gruppo== g2]))$p.value 
+  
+  #  F-test to test the homogeneity in variances 
+  res.ftest <- var.test(get(field) ~ gruppo, data = sub_tab)$p.value
+  
+  # If the three are not sign we have normality and homogeneity
+  if(p.sh1 > 0.05 & p.sh2 > 0.05 & res.ftest > 0.05){
+    
+    res <- with(sub_tab, t.test(get(field)[gruppo== g1],get(field)[gruppo== g2], var.equal = T, paired = T,  alternative = alt))
+    
+  } 
+  # If the shap are not sign while the f is sign we have normality but no homogeneity therefore var.equal= F
+  else if (p.sh1 > 0.05 & p.sh2 > 0.05 & res.ftest < 0.05){
+    res <-     with(sub_tab, t.test(get(field)[gruppo== g1],get(field)[gruppo== g2], var.equal = F, paired = T, alternative = alt))
+    
+  } 
+  
+  # If the shap are sign or one we have no normality and therefore wilcoxon non parametric
+  else if(p.sh1 < 0.05 | p.sh2 < 0.05){
+    res <- with(sub_tab, wilcox.test(get(field)[gruppo== g1],get(field)[gruppo== g2], paired = T, 
+                                     alternative = alt))
+  }
+  return(res)
+}
+
+
 # It does pairwise t test if the multi groups are normal and if the variance is homogeneous consider it as above; otherwise it does Wilcoxon pairwise all the methods have the p-value adjusted for BH
 
 test_multi_pairs <- function(tab, field, g1, g2, g3) {
@@ -206,10 +261,19 @@ plot_half_bp_4_sign <- function(tab, field){
     scale_fill_manual(values = colbp) +
     scale_color_manual(values = colbp) +
     theme_classic()+
-    theme(legend.position = "none")+
+    theme(legend.position = "none", 
+          axis.text.x = element_text(angle=45, hjust = 1))+
     ylab(label = labels[field])+
     xlab(label = "") +
-    ylim(0, max(tab_ggplot[,field]) + 25)
+    ylim(0, max(tab_ggplot[,field]) + 25)+
+    scale_x_discrete(labels= c("control"= paste0("control (",length(which(tab_ggplot$gruppo=="control")) ,")"),
+                               "recovered"= paste0("recovered (",length(which(tab_ggplot$gruppo=="recovered")) ,")"),
+                               "mild"= paste0("mild (",length(which(tab_ggplot$gruppo=="mild")) ,")"),
+                               "severe"= paste0("severe (",length(which(tab_ggplot$gruppo=="severe")) ,")")
+                               
+                               
+                                 ), )
+    
   
 }
 
@@ -283,6 +347,9 @@ corr_pairs <- function(tab, cat, g1, g2){
                      #                       label.sep= "\n"
                      #                       )
                      ) +
+        theme( plot.margin = unit(c(.5,.5,.8,.7), "cm"),
+               plot.background = element_rect(color = "black"),
+             )+
         # This stat_cor allow to place the p-value where you want and then also the number of digits to be indicated 
         stat_cor(method= "pearson",
                  label.x.npc= ifelse(p.corr$estimate > 0, "left", "center"),
@@ -319,6 +386,9 @@ corr_pairs <- function(tab, cat, g1, g2){
                      #                       label.sep= "\n"
                      #                       )
                      ) +
+        theme( plot.margin = unit(c(.7,.7,.8,.7), "cm"),
+               plot.background = element_rect(color = "black"),
+        )+
         stat_cor(method="spearman",
           label.x.npc= ifelse(p.corr$estimate > 0, "left", "center"),
                  label.y.npc = "top",
@@ -340,6 +410,49 @@ corr_pairs <- function(tab, cat, g1, g2){
   
 }
 
+
+# Functions for plot half, it uses gghalves but before there is the preparation of the table
+
+plot_two_half_bp <- function(tab, field, g1, g2){
+  
+  # tab= pz_dat
+  # field= "Total_CEPmL"
+  # g1= "recovered"
+  # g2= "recovered_b"
+  # 
+  
+  # filter gruppo and the field of interest
+  tab_ggplot.tmp1 <- as.data.frame(tab[tab$gruppo==g1 | tab$gruppo==g2,c("Codifica_IEO","gruppo",field)])
+  
+  tab_ggplot <- rbind(tab_ggplot.tmp1[match(gsub("_B", "",tab_ggplot.tmp1$Codifica_IEO[grep("_b", tab_ggplot.tmp1$gruppo)]),
+                                            tab_ggplot.tmp1$Codifica_IEO),],
+                      tab_ggplot.tmp1[grep("_b",tab_ggplot.tmp1$gruppo),])
+  
+  
+  # Order the level
+  tab_ggplot$gruppo <- ordered(tab_ggplot$gruppo,levels =  c(g1,g2))
+  
+  # Use gghalves function
+  ggplot(tab_ggplot, aes(x= gruppo, y = get(field)) ) + 
+    geom_half_boxplot(aes(alpha = gruppo), fill= colbp[match(g1, names(colbp))], side = "l", errorbar.draw = TRUE,
+                      outlier.color = NA) +
+    geom_half_dotplot(aes(alpha = gruppo),
+                      fill= colbp[match(g1, names(colbp))],
+                      dotsize= 0.9,
+                      method="histodot", stackdir="up")+
+    # scale_fill_manual(values = colbp[match(g1, names(colbp))]) +
+    scale_alpha_manual(values = c(1,.3)) +
+    # scale_color_manual(values = colbp[match(g1, names(colbp))]) +
+    theme_classic()+
+    theme(legend.position = "none", 
+          axis.text.x = element_text(angle=45, hjust = 1))+
+    ylab(label = labels[field])+
+    xlab(label = "") +
+    ylim(0, max(tab_ggplot[,field]) + 25)
+  # +
+    # theme(plot.background = element_rect(color = "black"))
+  
+}
 
 
 
